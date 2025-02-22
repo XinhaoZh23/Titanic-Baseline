@@ -256,7 +256,8 @@ class EnsembleModel:
         xgb_score = accuracy_score(y, self.xgb_model.predict(X_scaled))
         print(f"XGBoost准确率: {xgb_score:.4f}")
     
-    def predict(self, X):
+    def predict_proba(self, X):
+        """返回预测结果和概率"""
         # 标准化数据
         X_scaled = self.scaler.transform(X)
         
@@ -264,18 +265,25 @@ class EnsembleModel:
         X_torch = torch.FloatTensor(X_scaled)
         self.nn_model.eval()
         with torch.no_grad():
-            nn_pred = (self.nn_model(X_torch) > 0.5).float().numpy()
+            nn_proba = self.nn_model(X_torch).numpy()
         
-        # 随机森林预测
-        rf_pred = self.rf_model.predict(X_scaled)
+        # 随机森林预测概率
+        rf_proba = self.rf_model.predict_proba(X_scaled)[:, 1]
         
-        # XGBoost预测
-        xgb_pred = self.xgb_model.predict(X_scaled)
+        # XGBoost预测概率
+        xgb_proba = self.xgb_model.predict_proba(X_scaled)[:, 1]
         
-        # 投票
-        predictions = np.column_stack([nn_pred, rf_pred, xgb_pred])
-        final_pred = np.mean(predictions, axis=1) >= 0.5
-        return final_pred.astype(int)
+        # 平均概率
+        final_proba = np.mean([nn_proba.flatten(), rf_proba, xgb_proba], axis=0)
+        
+        # 返回预测类别和概率
+        predictions = (final_proba >= 0.5).astype(int)
+        return predictions, final_proba
+    
+    def predict(self, X):
+        """仅返回预测类别"""
+        predictions, _ = self.predict_proba(X)
+        return predictions
 
 def evaluate_metrics(y_true, y_pred):
     """计算并打印详细的评估指标"""
